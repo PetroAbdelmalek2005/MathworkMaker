@@ -11,41 +11,46 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing required fields: grade, topic, difficulty' });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: 'API key not configured on server' });
   }
 
   const { system, user } = buildPrompt(grade, topic, difficulty);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4096,
-          system,
-          messages: [{ role: 'user', content: user }],
+          systemInstruction: { parts: [{ text: system }] },
+          contents: [{ parts: [{ text: user }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.7,
+            maxOutputTokens: 4096,
+          },
         }),
       });
 
       if (!response.ok) {
         const err = await response.text();
-        throw new Error(`Claude API error ${response.status}: ${err}`);
+        throw new Error(`Gemini API error ${response.status}: ${err}`);
       }
 
       const data = await response.json();
-      const text = data.content[0].text.trim();
 
-      // Strip markdown code fences if Claude adds them despite instructions
-      const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-      const parsed = JSON.parse(cleaned);
+      if (!data.candidates?.length) {
+        const reason = data.promptFeedback?.blockReason;
+        throw new Error(reason ? `Request blocked by Gemini: ${reason}` : 'Gemini returned no candidates');
+      }
+
+      const text = data.candidates[0].content?.parts?.[0]?.text?.trim();
+      if (!text) throw new Error('Gemini returned an empty response');
+
+      const parsed = JSON.parse(text);
 
       return res.status(200).json(parsed);
     } catch (err) {

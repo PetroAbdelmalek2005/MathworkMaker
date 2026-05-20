@@ -7,7 +7,7 @@ AI-powered math worksheet generator for Grades 1–8. Pick a grade, topic, and d
 - React + Vite + Tailwind CSS
 - KaTeX for math rendering
 - html2canvas + jsPDF for PDF export
-- Claude Sonnet API via a Vercel serverless proxy (key never in the browser)
+- Google Gemini 1.5 Flash API (free tier) via a Vercel serverless proxy (key never in the browser)
 
 ## Local Development
 
@@ -17,9 +17,9 @@ npm install
 npm install -g vercel
 ```
 
-Create a `.env.local` file (copy from `.env.example`) and add your Anthropic API key:
+Create a `.env.local` file (copy from `.env.example`) and add your Gemini API key (free at [aistudio.google.com](https://aistudio.google.com/app/apikey)):
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=AIza...
 ```
 
 Run locally with Vercel dev (required to serve the `/api` function):
@@ -33,5 +33,5 @@ The app will be available at `http://localhost:3000`.
 
 1. Push this repo to GitHub
 2. Import into [Vercel](https://vercel.com)
-3. Add `ANTHROPIC_API_KEY` as an environment variable in your Vercel project settings
+3. Add `GEMINI_API_KEY` as an environment variable in your Vercel project settings
 4. Deploy — Vercel auto-detects the Vite frontend and the `api/` serverless function
