@@ -41,7 +41,15 @@ export default async function handler(req, res) {
       }
 
       const data = await response.json();
-      const text = data.candidates[0].content.parts[0].text.trim();
+
+      if (!data.candidates?.length) {
+        const reason = data.promptFeedback?.blockReason;
+        throw new Error(reason ? `Request blocked by Gemini: ${reason}` : 'Gemini returned no candidates');
+      }
+
+      const text = data.candidates[0].content?.parts?.[0]?.text?.trim();
+      if (!text) throw new Error('Gemini returned an empty response');
+
       const parsed = JSON.parse(text);
 
       return res.status(200).json(parsed);
