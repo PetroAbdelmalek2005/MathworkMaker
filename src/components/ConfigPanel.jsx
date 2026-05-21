@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { GRADE_TOPICS, DIFFICULTIES } from '../utils/topics';
 
-export default function ConfigPanel({ onGenerate, loading }) {
+export default function ConfigPanel({ onGenerate, loading, retryCountdown = 0 }) {
   const [grade, setGrade] = useState(5);
   const [topic, setTopic] = useState(GRADE_TOPICS[5][0]);
   const [difficulty, setDifficulty] = useState('Medium');
 
-  useEffect(() => {
-    setTopic(GRADE_TOPICS[grade][0]);
-  }, [grade]);
+  function handleGradeChange(newGrade) {
+    setGrade(newGrade);
+    setTopic(GRADE_TOPICS[newGrade][0]);
+  }
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -24,7 +25,7 @@ export default function ConfigPanel({ onGenerate, loading }) {
             <label className="block text-sm font-medium text-slate-600 mb-1">Grade</label>
             <select
               value={grade}
-              onChange={(e) => setGrade(Number(e.target.value))}
+              onChange={(e) => handleGradeChange(Number(e.target.value))}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {[1, 2, 3, 4, 5, 6, 7, 8].map((g) => (
@@ -62,10 +63,10 @@ export default function ConfigPanel({ onGenerate, loading }) {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || retryCountdown > 0}
           className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium py-2.5 px-4 rounded-lg transition-colors"
         >
-          {loading ? 'Generating…' : 'Generate Worksheet'}
+          {loading ? 'Generating…' : retryCountdown > 0 ? `Retry in ${retryCountdown}s…` : 'Generate Worksheet'}
         </button>
       </form>
     </div>

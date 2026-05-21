@@ -55,7 +55,6 @@ export async function generatePDF(worksheetRef, answerKeyRef, filename) {
     pdf.addImage(akImgData, 'PNG', 0, 0, pageWidth, akImgHeight);
   } else {
     let yOffset = 0;
-    const currentPage = pdf.getCurrentPageInfo().pageNumber;
     while (yOffset < answerCanvas.height) {
       const sliceHeight = Math.min(
         Math.round((pageHeight / pageWidth) * answerCanvas.width),

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { InlineMath, BlockMath } from 'react-katex';
+import { InlineMath } from 'react-katex';
 import { generatePDF } from '../lib/pdfGenerator';
 
 function MathText({ text }) {
