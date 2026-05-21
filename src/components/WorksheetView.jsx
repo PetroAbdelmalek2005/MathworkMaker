@@ -1,17 +1,18 @@
 import { useRef, useState } from 'react';
-import { InlineMath } from 'react-katex';
+import { InlineMath, BlockMath } from 'react-katex';
 import { generatePDF } from '../lib/pdfGenerator';
 
 function MathText({ text }) {
   if (!text) return null;
-  const parts = text.split(/(\$[^$]+\$)/g);
+  // $$…$$ must be matched before $…$ to avoid consuming the inner dollars
+  const parts = text.split(/(\$\$[\s\S]+?\$\$|\$[^$]+\$)/g);
   return (
     <>
       {parts.map((part, i) => {
-        if (part.startsWith('$') && part.endsWith('$')) {
-          const math = part.slice(1, -1);
-          return <InlineMath key={i} math={math} />;
-        }
+        if (part.startsWith('$$') && part.endsWith('$$'))
+          return <BlockMath key={i} math={part.slice(2, -2)} />;
+        if (part.startsWith('$') && part.endsWith('$'))
+          return <InlineMath key={i} math={part.slice(1, -1)} />;
         return <span key={i}>{part}</span>;
       })}
     </>
@@ -44,7 +45,7 @@ function WorksheetPage({ data, date }) {
           Lesson
         </div>
         <p style={{ margin: '0 0 8px 0', fontFamily: 'system-ui, sans-serif', fontSize: '10pt', color: '#1e3a5f' }}>
-          {data.lesson.concept}
+          <MathText text={data.lesson.concept} />
         </p>
         <div style={{ background: '#fff', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '8px 12px' }}>
           <div style={{ fontWeight: '600', fontFamily: 'system-ui, sans-serif', fontSize: '9.5pt', color: '#1d4ed8', marginBottom: '4px' }}>Example:</div>
