@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   }
 
   const { system, user } = buildPrompt(grade, topic, difficulty);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -36,8 +36,21 @@ export default async function handler(req, res) {
       });
 
       if (!response.ok) {
-        const err = await response.text();
-        throw new Error(`Gemini API error ${response.status}: ${err}`);
+        const errBody = await response.json().catch(() => null);
+
+        if (response.status === 429) {
+          const retryDelay = errBody?.error?.details
+            ?.find((d) => d['@type']?.endsWith('RetryInfo'))
+            ?.retryDelay?.replace('s', '');
+          const seconds = retryDelay ? Math.ceil(Number(retryDelay)) : 60;
+          return res.status(429).json({
+            error: `Rate limit reached. Please try again in ${seconds} seconds.`,
+            retryAfter: seconds,
+          });
+        }
+
+        const message = errBody?.error?.message || `Gemini API error ${response.status}`;
+        throw new Error(message);
       }
 
       const data = await response.json();

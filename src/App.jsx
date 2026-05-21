@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ConfigPanel from './components/ConfigPanel';
 import WorksheetView from './components/WorksheetView';
 
@@ -6,11 +6,31 @@ export default function App() {
   const [worksheetData, setWorksheetData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [retryCountdown, setRetryCountdown] = useState(0);
+  const countdownRef = useRef(null);
+
+  useEffect(() => {
+    if (retryCountdown <= 0) {
+      clearInterval(countdownRef.current);
+      return;
+    }
+    countdownRef.current = setInterval(() => {
+      setRetryCountdown((n) => {
+        if (n <= 1) {
+          clearInterval(countdownRef.current);
+          return 0;
+        }
+        return n - 1;
+      });
+    }, 1000);
+    return () => clearInterval(countdownRef.current);
+  }, [retryCountdown]);
 
   async function handleGenerate({ grade, topic, difficulty }) {
     setLoading(true);
     setError(null);
     setWorksheetData(null);
+    setRetryCountdown(0);
 
     try {
       const res = await fetch('/api/generate', {
@@ -20,6 +40,11 @@ export default function App() {
       });
 
       const data = await res.json();
+
+      if (res.status === 429) {
+        setRetryCountdown(data.retryAfter || 60);
+        throw new Error(data.error || 'Rate limit reached. Please try again shortly.');
+      }
 
       if (!res.ok) {
         throw new Error(data.error || 'Failed to generate worksheet');
@@ -52,7 +77,7 @@ export default function App() {
 
       {/* Main */}
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        <ConfigPanel onGenerate={handleGenerate} loading={loading} />
+        <ConfigPanel onGenerate={handleGenerate} loading={loading} retryCountdown={retryCountdown} />
 
         {/* Loading */}
         {loading && (
@@ -61,7 +86,7 @@ export default function App() {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            <p className="text-slate-600 text-sm">Generating your worksheet with Claude AI…</p>
+            <p className="text-slate-600 text-sm">Generating your worksheet…</p>
           </div>
         )}
 
@@ -74,6 +99,11 @@ export default function App() {
             <div>
               <p className="text-red-700 font-medium text-sm">Error generating worksheet</p>
               <p className="text-red-600 text-sm mt-1">{error}</p>
+              {retryCountdown > 0 && (
+                <p className="text-red-500 text-sm mt-2">
+                  You can retry in <strong>{retryCountdown}s</strong>…
+                </p>
+              )}
             </div>
           </div>
         )}
