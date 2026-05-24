@@ -43,9 +43,12 @@ export default async function handler(req, res) {
             ?.find((d) => d['@type']?.endsWith('RetryInfo'))
             ?.retryDelay?.replace('s', '');
           const seconds = retryDelay ? Math.ceil(Number(retryDelay)) : 60;
+          console.error('[generate] Gemini 429 —', errBody?.error?.status, '—', errBody?.error?.message);
           return res.status(429).json({
             error: `Rate limit reached. Please try again in ${seconds} seconds.`,
             retryAfter: seconds,
+            geminiStatus: errBody?.error?.status ?? null,
+            geminiMessage: errBody?.error?.message ?? null,
           });
         }
 

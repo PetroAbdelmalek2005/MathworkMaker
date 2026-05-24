@@ -33,6 +33,8 @@ export default function App() {
   const [error, setError] = useState(null);
   const [retryCountdown, setRetryCountdown] = useState(0);
   const [autoRetry, setAutoRetry] = useState(false);
+  const [rateLimitCount, setRateLimitCount] = useState(0);
+  const [geminiDetail, setGeminiDetail] = useState(null);
   const countdownRef = useRef(null);
   const lastConfigRef = useRef(null);
   const autoRetryRef = useRef(false);
@@ -42,6 +44,7 @@ export default function App() {
     autoRetryRef.current = false;
     setLoading(true);
     setError(null);
+    setGeminiDetail(null);
     setWorksheetData(null);
     setRetryCountdown(0);
     setAutoRetry(false);
@@ -67,6 +70,8 @@ export default function App() {
         setRetryCountdown(seconds);
         autoRetryRef.current = true;
         setAutoRetry(true);
+        setRateLimitCount((n) => n + 1);
+        if (data.geminiMessage) setGeminiDetail(data.geminiMessage);
         throw new Error(data.error || 'Rate limit reached. Please try again shortly.');
       }
 
@@ -162,6 +167,9 @@ export default function App() {
             <div>
               <p className="text-red-700 font-medium text-sm">Error generating worksheet</p>
               <p className="text-red-600 text-sm mt-1">{error}</p>
+              {geminiDetail && (
+                <p className="text-red-400 text-xs mt-1 font-mono">{geminiDetail}</p>
+              )}
               {retryCountdown > 0 && autoRetry && (
                 <p className="text-red-500 text-sm mt-2">
                   Auto-retrying in <strong>{retryCountdown}s</strong>…{' '}
@@ -176,6 +184,20 @@ export default function App() {
               {retryCountdown > 0 && !autoRetry && (
                 <p className="text-red-500 text-sm mt-2">
                   You can retry in <strong>{retryCountdown}s</strong>…
+                </p>
+              )}
+              {rateLimitCount >= 2 && (
+                <p className="text-amber-700 text-xs mt-3 bg-amber-50 border border-amber-200 rounded p-2">
+                  Still failing after multiple retries — your Gemini API key may have exhausted its quota or be invalid. Get a fresh key at{' '}
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline font-medium"
+                  >
+                    aistudio.google.com
+                  </a>{' '}
+                  and update it in your Vercel environment variables.
                 </p>
               )}
             </div>
