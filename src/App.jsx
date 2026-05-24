@@ -67,11 +67,13 @@ export default function App() {
 
       if (res.status === 429) {
         const seconds = data.retryAfter || 60;
-        setRetryCountdown(seconds);
-        autoRetryRef.current = true;
-        setAutoRetry(true);
         setRateLimitCount((n) => n + 1);
         if (data.geminiMessage) setGeminiDetail(data.geminiMessage);
+        if (!data.isZeroQuota && seconds > 0) {
+          setRetryCountdown(seconds);
+          autoRetryRef.current = true;
+          setAutoRetry(true);
+        }
         throw new Error(data.error || 'Rate limit reached. Please try again shortly.');
       }
 

@@ -43,10 +43,14 @@ export default async function handler(req, res) {
             ?.find((d) => d['@type']?.endsWith('RetryInfo'))
             ?.retryDelay?.replace('s', '');
           const seconds = retryDelay ? Math.ceil(Number(retryDelay)) : 60;
+          const isZeroQuota = errBody?.error?.message?.includes('limit: 0');
           console.error('[generate] Gemini 429 —', errBody?.error?.status, '—', errBody?.error?.message);
           return res.status(429).json({
-            error: `Rate limit reached. Please try again in ${seconds} seconds.`,
-            retryAfter: seconds,
+            error: isZeroQuota
+              ? 'Your Gemini API key has a free-tier quota of 0. Get a new key at aistudio.google.com/app/apikey and update it in Vercel.'
+              : `Rate limit reached. Please try again in ${seconds} seconds.`,
+            retryAfter: isZeroQuota ? 0 : seconds,
+            isZeroQuota: isZeroQuota ?? false,
             geminiStatus: errBody?.error?.status ?? null,
             geminiMessage: errBody?.error?.message ?? null,
           });
