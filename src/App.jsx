@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ConfigPanel from './components/ConfigPanel';
 import WorksheetView from './components/WorksheetView';
 
@@ -7,30 +7,19 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [retryCountdown, setRetryCountdown] = useState(0);
+  const [autoRetry, setAutoRetry] = useState(false);
   const countdownRef = useRef(null);
+  const lastConfigRef = useRef(null);
+  const autoRetryRef = useRef(false);
 
-  useEffect(() => {
-    if (retryCountdown <= 0) {
-      clearInterval(countdownRef.current);
-      return;
-    }
-    countdownRef.current = setInterval(() => {
-      setRetryCountdown((n) => {
-        if (n <= 1) {
-          clearInterval(countdownRef.current);
-          return 0;
-        }
-        return n - 1;
-      });
-    }, 1000);
-    return () => clearInterval(countdownRef.current);
-  }, [retryCountdown]);
-
-  async function handleGenerate({ grade, topic, difficulty }) {
+  const handleGenerate = useCallback(async ({ grade, topic, difficulty }) => {
+    lastConfigRef.current = { grade, topic, difficulty };
+    autoRetryRef.current = false;
     setLoading(true);
     setError(null);
     setWorksheetData(null);
     setRetryCountdown(0);
+    setAutoRetry(false);
 
     try {
       const res = await fetch('/api/generate', {
@@ -42,7 +31,10 @@ export default function App() {
       const data = await res.json();
 
       if (res.status === 429) {
-        setRetryCountdown(data.retryAfter || 60);
+        const seconds = data.retryAfter || 60;
+        setRetryCountdown(seconds);
+        autoRetryRef.current = true;
+        setAutoRetry(true);
         throw new Error(data.error || 'Rate limit reached. Please try again shortly.');
       }
 
@@ -56,6 +48,39 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (retryCountdown <= 0) {
+      clearInterval(countdownRef.current);
+      return;
+    }
+    countdownRef.current = setInterval(() => {
+      setRetryCountdown((n) => {
+        if (n <= 1) {
+          clearInterval(countdownRef.current);
+          if (autoRetryRef.current && lastConfigRef.current) {
+            autoRetryRef.current = false;
+            const config = lastConfigRef.current;
+            setTimeout(() => {
+              setAutoRetry(false);
+              handleGenerate(config);
+            }, 100);
+          }
+          return 0;
+        }
+        return n - 1;
+      });
+    }, 1000);
+    return () => clearInterval(countdownRef.current);
+  }, [retryCountdown, handleGenerate]);
+
+  function cancelAutoRetry() {
+    autoRetryRef.current = false;
+    setAutoRetry(false);
+    setRetryCountdown(0);
+    clearInterval(countdownRef.current);
+    setError(null);
   }
 
   return (
@@ -77,7 +102,12 @@ export default function App() {
 
       {/* Main */}
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        <ConfigPanel onGenerate={handleGenerate} loading={loading} retryCountdown={retryCountdown} />
+        <ConfigPanel
+          onGenerate={handleGenerate}
+          loading={loading}
+          retryCountdown={retryCountdown}
+          autoRetry={autoRetry}
+        />
 
         {/* Loading */}
         {loading && (
@@ -99,7 +129,18 @@ export default function App() {
             <div>
               <p className="text-red-700 font-medium text-sm">Error generating worksheet</p>
               <p className="text-red-600 text-sm mt-1">{error}</p>
-              {retryCountdown > 0 && (
+              {retryCountdown > 0 && autoRetry && (
+                <p className="text-red-500 text-sm mt-2">
+                  Auto-retrying in <strong>{retryCountdown}s</strong>…{' '}
+                  <button
+                    onClick={cancelAutoRetry}
+                    className="underline hover:no-underline font-medium"
+                  >
+                    Cancel
+                  </button>
+                </p>
+              )}
+              {retryCountdown > 0 && !autoRetry && (
                 <p className="text-red-500 text-sm mt-2">
                   You can retry in <strong>{retryCountdown}s</strong>…
                 </p>
