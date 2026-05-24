@@ -2,6 +2,31 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import ConfigPanel from './components/ConfigPanel';
 import WorksheetView from './components/WorksheetView';
 
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function getCached(grade, topic, difficulty) {
+  try {
+    const raw = localStorage.getItem(`ws:${grade}:${topic}:${difficulty}`);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function setCached(grade, topic, difficulty, data) {
+  try {
+    localStorage.setItem(
+      `ws:${grade}:${topic}:${difficulty}`,
+      JSON.stringify({ ts: Date.now(), data }),
+    );
+  } catch {
+    // storage full — ignore
+  }
+}
+
 export default function App() {
   const [worksheetData, setWorksheetData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -20,6 +45,13 @@ export default function App() {
     setWorksheetData(null);
     setRetryCountdown(0);
     setAutoRetry(false);
+
+    const cached = getCached(grade, topic, difficulty);
+    if (cached) {
+      setWorksheetData(cached);
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch('/api/generate', {
@@ -42,6 +74,7 @@ export default function App() {
         throw new Error(data.error || 'Failed to generate worksheet');
       }
 
+      setCached(grade, topic, difficulty, data);
       setWorksheetData(data);
     } catch (err) {
       setError(err.message);
