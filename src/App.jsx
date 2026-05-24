@@ -1,36 +1,60 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ConfigPanel from './components/ConfigPanel';
 import WorksheetView from './components/WorksheetView';
+
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function getCached(grade, topic, difficulty) {
+  try {
+    const raw = localStorage.getItem(`ws:${grade}:${topic}:${difficulty}`);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function setCached(grade, topic, difficulty, data) {
+  try {
+    localStorage.setItem(
+      `ws:${grade}:${topic}:${difficulty}`,
+      JSON.stringify({ ts: Date.now(), data }),
+    );
+  } catch {
+    // storage full — ignore
+  }
+}
 
 export default function App() {
   const [worksheetData, setWorksheetData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [retryCountdown, setRetryCountdown] = useState(0);
+  const [autoRetry, setAutoRetry] = useState(false);
+  const [rateLimitCount, setRateLimitCount] = useState(0);
+  const [geminiDetail, setGeminiDetail] = useState(null);
   const countdownRef = useRef(null);
+  const lastConfigRef = useRef(null);
+  const autoRetryRef = useRef(false);
 
-  useEffect(() => {
-    if (retryCountdown <= 0) {
-      clearInterval(countdownRef.current);
-      return;
-    }
-    countdownRef.current = setInterval(() => {
-      setRetryCountdown((n) => {
-        if (n <= 1) {
-          clearInterval(countdownRef.current);
-          return 0;
-        }
-        return n - 1;
-      });
-    }, 1000);
-    return () => clearInterval(countdownRef.current);
-  }, [retryCountdown]);
-
-  async function handleGenerate({ grade, topic, difficulty }) {
+  const handleGenerate = useCallback(async ({ grade, topic, difficulty }) => {
+    lastConfigRef.current = { grade, topic, difficulty };
+    autoRetryRef.current = false;
     setLoading(true);
     setError(null);
+    setGeminiDetail(null);
     setWorksheetData(null);
     setRetryCountdown(0);
+    setAutoRetry(false);
+
+    const cached = getCached(grade, topic, difficulty);
+    if (cached) {
+      setWorksheetData(cached);
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch('/api/generate', {
@@ -42,7 +66,12 @@ export default function App() {
       const data = await res.json();
 
       if (res.status === 429) {
-        setRetryCountdown(data.retryAfter || 60);
+        const seconds = data.retryAfter || 60;
+        setRetryCountdown(seconds);
+        autoRetryRef.current = true;
+        setAutoRetry(true);
+        setRateLimitCount((n) => n + 1);
+        if (data.geminiMessage) setGeminiDetail(data.geminiMessage);
         throw new Error(data.error || 'Rate limit reached. Please try again shortly.');
       }
 
@@ -50,12 +79,46 @@ export default function App() {
         throw new Error(data.error || 'Failed to generate worksheet');
       }
 
+      setCached(grade, topic, difficulty, data);
       setWorksheetData(data);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (retryCountdown <= 0) {
+      clearInterval(countdownRef.current);
+      return;
+    }
+    countdownRef.current = setInterval(() => {
+      setRetryCountdown((n) => {
+        if (n <= 1) {
+          clearInterval(countdownRef.current);
+          if (autoRetryRef.current && lastConfigRef.current) {
+            autoRetryRef.current = false;
+            const config = lastConfigRef.current;
+            setTimeout(() => {
+              setAutoRetry(false);
+              handleGenerate(config);
+            }, 100);
+          }
+          return 0;
+        }
+        return n - 1;
+      });
+    }, 1000);
+    return () => clearInterval(countdownRef.current);
+  }, [retryCountdown, handleGenerate]);
+
+  function cancelAutoRetry() {
+    autoRetryRef.current = false;
+    setAutoRetry(false);
+    setRetryCountdown(0);
+    clearInterval(countdownRef.current);
+    setError(null);
   }
 
   return (
@@ -77,7 +140,12 @@ export default function App() {
 
       {/* Main */}
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        <ConfigPanel onGenerate={handleGenerate} loading={loading} retryCountdown={retryCountdown} />
+        <ConfigPanel
+          onGenerate={handleGenerate}
+          loading={loading}
+          retryCountdown={retryCountdown}
+          autoRetry={autoRetry}
+        />
 
         {/* Loading */}
         {loading && (
@@ -99,9 +167,37 @@ export default function App() {
             <div>
               <p className="text-red-700 font-medium text-sm">Error generating worksheet</p>
               <p className="text-red-600 text-sm mt-1">{error}</p>
-              {retryCountdown > 0 && (
+              {geminiDetail && (
+                <p className="text-red-400 text-xs mt-1 font-mono">{geminiDetail}</p>
+              )}
+              {retryCountdown > 0 && autoRetry && (
+                <p className="text-red-500 text-sm mt-2">
+                  Auto-retrying in <strong>{retryCountdown}s</strong>…{' '}
+                  <button
+                    onClick={cancelAutoRetry}
+                    className="underline hover:no-underline font-medium"
+                  >
+                    Cancel
+                  </button>
+                </p>
+              )}
+              {retryCountdown > 0 && !autoRetry && (
                 <p className="text-red-500 text-sm mt-2">
                   You can retry in <strong>{retryCountdown}s</strong>…
+                </p>
+              )}
+              {rateLimitCount >= 2 && (
+                <p className="text-amber-700 text-xs mt-3 bg-amber-50 border border-amber-200 rounded p-2">
+                  Still failing after multiple retries — your Gemini API key may have exhausted its quota or be invalid. Get a fresh key at{' '}
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline font-medium"
+                  >
+                    aistudio.google.com
+                  </a>{' '}
+                  and update it in your Vercel environment variables.
                 </p>
               )}
             </div>

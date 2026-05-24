@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { GRADE_TOPICS, DIFFICULTIES } from '../utils/topics';
 
-export default function ConfigPanel({ onGenerate, loading, retryCountdown = 0 }) {
+export default function ConfigPanel({ onGenerate, loading, retryCountdown = 0, autoRetry = false }) {
   const [grade, setGrade] = useState(5);
   const [topic, setTopic] = useState(GRADE_TOPICS[5][0]);
   const [difficulty, setDifficulty] = useState('Medium');
@@ -66,7 +66,13 @@ export default function ConfigPanel({ onGenerate, loading, retryCountdown = 0 })
           disabled={loading || retryCountdown > 0}
           className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium py-2.5 px-4 rounded-lg transition-colors"
         >
-          {loading ? 'Generating…' : retryCountdown > 0 ? `Retry in ${retryCountdown}s…` : 'Generate Worksheet'}
+          {loading
+            ? 'Generating…'
+            : retryCountdown > 0
+              ? autoRetry
+                ? `Auto-retrying in ${retryCountdown}s…`
+                : `Retry in ${retryCountdown}s…`
+              : 'Generate Worksheet'}
         </button>
       </form>
     </div>
